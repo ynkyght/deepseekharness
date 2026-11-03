@@ -111,8 +111,10 @@ def gap_report(docs):
                 continue
             if not (DOCS / ref).is_file():
                 gaps.append(("project_memory 引用了不存在的整理稿", ref))
-        if docs and MEM.stat().st_mtime < max(d["mtime"] for d in docs):
-            gaps.append(("project_memory 比最新整理稿旧", "需要补结论"))
+        m = re.search("最后更新[：:] *([0-9]{4}-[0-9]{2}-[0-9]{2})", mem)
+        newest_doc = max((d["date"] for d in docs if d["date"]), default="")
+        if m and newest_doc and newest_doc > m.group(1):
+            gaps.append(("project_memory 落后于最新整理稿", "补结论并更新『最后更新』"))
     else:
         gaps.append(("缺少 project_memory.md", "先建骨架"))
     return gaps
