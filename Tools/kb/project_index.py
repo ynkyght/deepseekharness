@@ -162,7 +162,7 @@ def main():
         return 0
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(build(items), encoding="utf-8")
+    out_path.write_text(build(items), encoding="utf-8", newline="\n")
     print("[idx] 已汇总 %d 个项目 → %s" % (len(items), out_path))
     for d in items:
         print("  - %-28s %-12s 引脚%d 坑%d" % (d["name"][:28], d["chip"] or "—", len(d["pins"]), len(d["pits"])))

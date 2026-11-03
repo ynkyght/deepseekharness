@@ -82,7 +82,7 @@ def git_tracked():
     try:
         out = subprocess.run(
             ["git", "-c", "core.quotepath=false", "-C", str(ROOT), "ls-files", "Docs"],
-            capture_output=True, text=True, timeout=10)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         if out.returncode != 0:
             return None
         return set(line.strip() for line in out.stdout.splitlines() if line.strip())
@@ -129,7 +129,7 @@ def main():
     docs = [parse_doc(p) for p in sorted(DOCS.glob("*.md")) if p.name not in skip]
     gaps = gap_report(docs)
     if not args.check:
-        INDEX.write_text(build_index(docs), encoding="utf-8")
+        INDEX.write_text(build_index(docs), encoding="utf-8", newline="\n")
     if args.json:
         print(json.dumps({"docs": docs, "gaps": gaps}, ensure_ascii=False, indent=2))
         return 1 if (gaps and args.check) else 0
