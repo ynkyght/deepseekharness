@@ -77,9 +77,14 @@ def parse(mem_path):
         return []
 
     m = CHIP_RE.search(text)
+    try:
+        rel_dir = str(mem_path.parent.resolve()).replace(chr(92), "/")
+    except Exception:
+        rel_dir = ""
     return {
         "name": mem_path.parent.name,
         "title": title or mem_path.parent.name,
+        "rel": rel_dir.split("/")[-1] if rel_dir else "",
         "dir": str(mem_path.parent),
         "chip": m.group(0) if m else "",
         "pins": pick(sec("引脚", "总线")),
@@ -121,7 +126,7 @@ def build(items):
         out.append("")
         if d["title"] and d["title"] != d["name"]:
             out.append("- 标题：%s" % d["title"])
-        out.append("- 路径：%s" % d["dir"])
+        out.append("- 目录名：%s" % d["rel"])
         if d["chip"]:
             out.append("- 芯片：%s" % d["chip"])
         for label, key in (("引脚/总线", "pins"), ("踩过的坑", "pits"), ("接口约定", "iface")):
