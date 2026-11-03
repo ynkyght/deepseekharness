@@ -10,6 +10,7 @@
 import argparse
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -77,8 +78,21 @@ def build_index(docs):
     return NL.join(out) + NL
 
 
+def git_tracked():
+    try:
+        out = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "-C", str(ROOT), "ls-files", "Docs"],
+            capture_output=True, text=True, timeout=10)
+        if out.returncode != 0:
+            return None
+        return set(line.strip() for line in out.stdout.splitlines() if line.strip())
+    except Exception:
+        return None
+
+
 def gap_report(docs):
     mem = read_text(MEM) if MEM.is_file() else ""
+    tracked = git_tracked()
     gaps = []
     for d in docs:
         if d["file"] not in mem:
@@ -89,6 +103,8 @@ def gap_report(docs):
             gaps.append(("缺一级标题", d["file"]))
         if not d["has_src"]:
             gaps.append(("缺来源标注", d["file"]))
+        if tracked is not None and ("Docs/" + d["file"]) not in tracked:
+            gaps.append(("未纳入 Git（有丢失风险）", d["file"]))
     if mem:
         for ref in sorted(set(re.findall("Docs/([^ ()]+[.]md)", mem))):
             if ref == "INDEX.md" or "YYYY" in ref or "主题" in ref or "xxx" in ref:

@@ -89,10 +89,13 @@ def parse(mem_path):
     }
 
 
-def collect(root):
+def collect(root, max_depth=8):
     found = []
-    for p in Path(root).rglob("project_memory.md"):
+    base = Path(root)
+    for p in base.rglob("project_memory.md"):
         if any(part in SKIP_DIRS for part in p.parts):
+            continue
+        if len(p.relative_to(base).parts) > max_depth:
             continue
         if p.parent.resolve() == KB.resolve():
             continue
