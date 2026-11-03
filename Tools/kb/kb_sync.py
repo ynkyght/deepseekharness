@@ -91,6 +91,8 @@ def gap_report(docs):
             gaps.append(("缺来源标注", d["file"]))
     if mem:
         for ref in sorted(set(re.findall("Docs/([^ ()]+[.]md)", mem))):
+            if ref == "INDEX.md" or "YYYY" in ref or "主题" in ref or "xxx" in ref:
+                continue
             if not (DOCS / ref).is_file():
                 gaps.append(("project_memory 引用了不存在的整理稿", ref))
         if docs and MEM.stat().st_mtime < max(d["mtime"] for d in docs):
