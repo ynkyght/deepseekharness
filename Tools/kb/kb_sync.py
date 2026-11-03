@@ -109,7 +109,8 @@ def main():
     args = ap.parse_args()
     if not DOCS.is_dir():
         DOCS.mkdir(parents=True, exist_ok=True)
-    docs = [parse_doc(p) for p in sorted(DOCS.glob("*.md")) if p.name != "INDEX.md"]
+    skip = ("INDEX.md", "跨项目索引.md")
+    docs = [parse_doc(p) for p in sorted(DOCS.glob("*.md")) if p.name not in skip]
     gaps = gap_report(docs)
     if not args.check:
         INDEX.write_text(build_index(docs), encoding="utf-8")
