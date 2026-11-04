@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""kb_search - SQLite FTS5 全文检索：只做索引层，源文件仍是 Markdown。
+
+用法:
+    py -3.13 Tools/kb/kb_search.py --rebuild      # 重建索引（扫 D:/data）
+    py -3.13 Tools/kb/kb_search.py DM9000 地址     # 搜索（多个词按 AND）
+    py -3.13 Tools/kb/kb_search.py --stats        # 看索引规模
+"""
+
+import argparse
+import re
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+KB = Path(__file__).resolve().parents[2]
+DB = KB / "Tools" / "kb" / "kb.db"
+SKIP_DIRS = ("node_modules", ".git", "build", "__pycache__", ".venv", "dist", "MDK-ARM", "Objects")
+
+
+def is_cjk(ch):
+    return "\u4e00" <= ch <= "\u9fff"
+
+
+def seg(text):
+    """CJK 拆成单字、ASCII 保持整词，供 FTS5 unicode61 使用。"""
+    out, run = [], []
+    for ch in text:
+        if is_cjk(ch):
+            if run:
+                out.append("".join(run)); run = []
+            out.append(ch)
+        elif ch.isalnum() or ch in "_-":
+            run.append(ch)
+        else:
+            if run:
+                out.append("".join(run)); run = []
+    if run:
+        out.append("".join(run))
+    return " ".join(out)
+
+
+def read(p):
+    raw = p.read_bytes()
+    for enc in ("utf-8", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def tidy(s):
+    out = []
+    for i, ch in enumerate(s):
+        if ch == " " and 0 < i < len(s) - 1 and is_cjk(s[i - 1]) and is_cjk(s[i + 1]):
+            continue
+        out.append(ch)
+    return re.sub(r"s+", " ", "".join(out))
+
+
+def collect(roots):
+    items, seen = [], set()
+    for root in roots:
+        base = Path(root)
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.md"):
+            if any(part in SKIP_DIRS for part in p.parts):
+                continue
+            name = p.name.lower()
+            in_docs = p.parent.name.lower() == "docs"
+            is_mem = p.name == "project_memory.md"
+            if not (in_docs or is_mem):
+                continue
+            key = str(p.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            text = read(p)
+            title = ""
+            for line in text.splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+            items.append({
+                "path": key,
+                "project": p.parent.name if in_docs else p.parent.name,
+                "title": title or p.stem,
+                "kind": "memory" if is_mem else "doc",
+                "mtime": p.stat().st_mtime,
+                "text": text,
+            })
+    return items
+
+
+def open_db():
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(DB))
+    con.execute("PRAGMA journal_mode=WAL")
+    return con
+
+
+def rebuild(roots):
+    items = collect(roots)
+    con = open_db()
+    con.executescript("""
+        DROP TABLE IF EXISTS docs;
+        DROP TABLE IF EXISTS docs_fts;
+        CREATE TABLE docs (
+            id INTEGER PRIMARY KEY,
+            path TEXT UNIQUE, project TEXT, title TEXT, kind TEXT,
+            mtime REAL, seg TEXT
+        );
+        CREATE VIRTUAL TABLE docs_fts USING fts5(seg, content='docs', content_rowid='id');
+    """)
+    con.executemany(
+        "INSERT INTO docs(path, project, title, kind, mtime, seg) VALUES(?,?,?,?,?,?)",
+        [(d["path"], d["project"], d["title"], d["kind"], d["mtime"], seg(d["text"])) for d in items])
+    con.execute("INSERT INTO docs_fts(rowid, seg) SELECT id, seg FROM docs")
+    con.commit()
+    print("[search] 索引 %d 个文件 → %s" % (len(items), DB))
+    return 0
+
+
+def search(terms, limit=12):
+    con = open_db()
+    phrase = '"' + " ".join(seg(t) for t in terms) + '"'
+    sql = """SELECT d.path, d.project, d.title, d.kind,
+                    snippet(docs_fts, 0, '[', ']', ' … ', 14) AS snip
+             FROM docs_fts f JOIN docs d ON d.id = f.rowid
+             WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?"""
+    rows = con.execute(sql, (phrase, limit)).fetchall()
+    if not rows:
+        loose = " AND ".join(seg(t) for t in terms)
+        rows = con.execute(sql, (loose, limit)).fetchall()
+    return rows
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("terms", nargs="*")
+    ap.add_argument("--rebuild", action="store_true")
+    ap.add_argument("--root", action="append", default=None)
+    ap.add_argument("--limit", type=int, default=12)
+    args = ap.parse_args()
+
+    roots = args.root or ["D:/data"]
+    if args.rebuild:
+        return rebuild(roots)
+    if not DB.is_file():
+        print("[search] 还没有索引，先跑 --rebuild")
+        return 2
+    if not args.terms:
+        con = open_db()
+        n, t = con.execute("SELECT COUNT(*), SUM(LENGTH(seg)) FROM docs").fetchone()
+        print("[search] 文件 %d 个，索引文本 %d 字符，库 %s" % (n, t or 0, DB))
+        return 0
+
+    rows = search(args.terms, args.limit)
+    print("[search] %s → %d 条" % (" ".join(args.terms), len(rows)))
+    for path, project, title, kind, snip in rows:
+        print(NL + "- [%s] %s  (%s)" % (kind, title, project))
+        print("  %s" % path)
+        print("  %s" % tidy(snip)[:260])
+    return 0
+
+
+NL = chr(10)
+if __name__ == "__main__":
+    sys.exit(main())
