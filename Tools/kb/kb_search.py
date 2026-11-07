@@ -63,7 +63,7 @@ def tidy(s):
         if ch == " " and 0 < i < len(s) - 1 and is_cjk(s[i - 1]) and is_cjk(s[i + 1]):
             continue
         out.append(ch)
-    return re.sub(r"s+", " ", "".join(out))
+    return re.sub(r"\s+", " ", "".join(out))
 
 
 def collect(roots):
@@ -101,10 +101,25 @@ def collect(roots):
     return items
 
 
-def open_db():
+def open_db(readonly=False):
+    """检索只读打开：DSH 沙箱只放行 workspace，写 D 盘会被拒，
+    而 WAL 模式需要目录写权限，所以检索一律用只读 URI。"""
+    db_uri = DB.as_posix()
+    if readonly:
+        for suffix in ("?mode=ro&immutable=1", "?mode=ro"):
+            try:
+                con = sqlite3.connect("file:" + db_uri + suffix, uri=True)
+                con.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+                return con
+            except sqlite3.Error:
+                pass
+        return sqlite3.connect(str(DB))
     DB.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(DB))
-    con.execute("PRAGMA journal_mode=WAL")
+    try:
+        con.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     return con
 
 
@@ -131,7 +146,7 @@ def rebuild(roots):
 
 
 def search(terms, limit=12):
-    con = open_db()
+    con = open_db(readonly=True)
     phrase = '"' + " ".join(seg(t) for t in terms) + '"'
     sql = """SELECT d.path, d.project, d.title, d.kind,
                     snippet(docs_fts, 0, '[', ']', ' … ', 14) AS snip
@@ -148,18 +163,24 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("terms", nargs="*")
     ap.add_argument("--rebuild", action="store_true")
+    ap.add_argument("--stats", action="store_true")
     ap.add_argument("--root", action="append", default=None)
     ap.add_argument("--limit", type=int, default=12)
     args = ap.parse_args()
 
     roots = args.root or ["D:/data"]
     if args.rebuild:
-        return rebuild(roots)
+        try:
+            return rebuild(roots)
+        except (sqlite3.OperationalError, PermissionError, OSError) as e:
+            print("[search] 重建索引需要写 %s，当前进程被沙箱限制：%s" % (DB, e))
+            print("[search] 请到普通 PowerShell（沙箱外）运行：py -3.13 Tools/kb/kb_search.py --rebuild")
+            return 3
     if not DB.is_file():
         print("[search] 还没有索引，先跑 --rebuild")
         return 2
-    if not args.terms:
-        con = open_db()
+    if args.stats or not args.terms:
+        con = open_db(readonly=True)
         n, t = con.execute("SELECT COUNT(*), SUM(LENGTH(seg)) FROM docs").fetchone()
         print("[search] 文件 %d 个，索引文本 %d 字符，库 %s" % (n, t or 0, DB))
         return 0

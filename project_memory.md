@@ -3,7 +3,7 @@
 > 用途：每次开会话先读这一页，知道库里有什么、怎么找。
 > 规则：只收可验证的知识；每条带来源；不确定标「待验证」。
 
-最后更新：2026-11-04
+最后更新：2026-11-08
 
 ---
 
@@ -30,6 +30,7 @@
 2. **`.sct` 改了不生效**，先查 `uvprojx` 的 `umfTarg` → 依据：同上 → 边界：Keil 工程同时存在分散加载与 Target 对话框配置时
 3. **DMA 缓冲区不要放 CCM/TCM** → 依据：F407 project_memory 坑 #2 → 边界：F4/F7/H7 带 DMA 的外设
 4. **外置 RAM 段必须 UNINIT + zero_init** → 依据：V7 project_memory 坑 #7 → 边界：SDRAM/外部 SRAM 被 C 启动代码清零时
+5. **沙箱内跑 kb_search.py 报 `unable to open database file`** → 现象：DSH 会话里执行检索直接 traceback、退出码 1；根因：`open_db()` 里的 `PRAGMA journal_mode=WAL` 要写 `D:\data`，DSH 沙箱只放行 workspace，SQLite 只读打开同样需要目录写权限；修法：检索一律用 `file:...?mode=ro&immutable=1` 只读 URI，WAL 只在 `--rebuild` 时设置 → 依据：Tools/kb/kb_search.py（2026-11-08 实测：默认连接 FAIL、`mode=ro` FAIL、`immutable=1` OK）→ 边界：任何在 DSH 沙箱内跑、库或所在目录不可写的脚本
 
 ## 四、待整理 / 待验证
 
