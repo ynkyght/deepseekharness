@@ -7,6 +7,13 @@
 
 ---
 
+## 0. 当前状态
+
+- **状态**：检索可用 —— 203 个文件 / 2,142,419 字符；索引默认三根 `D:/data` + `D:/My_project` + DSH 工作目录
+- **收尾顺序**：kb_sync → kb_brief → kb_search --rebuild（每日 18:00 定时任务）；2026-11-15 起 kb_brief 会把「## 0. 当前状态」整块置顶并校验版本落后
+- **未决**：① 水母缸「设计说明_v01.md / 仿真计划_v01.md」不在 Docs/ 下，未入索引；② mouse 项目尚无 project_memory.md；③ 中文单字回退仍有检索噪音
+- **更新**：2026-11-15｜本块**只覆盖不追加**
+
 ## 一、这个库是什么
 
 把零散资料（手册、教程、聊天记录、截图、网页）整理成能直接查的结论。
@@ -34,6 +41,8 @@
 4. **外置 RAM 段必须 UNINIT + zero_init** → 依据：V7 project_memory 坑 #7 → 边界：SDRAM/外部 SRAM 被 C 启动代码清零时
 5. **沙箱内跑 kb_search.py 报 `unable to open database file`** → 现象：DSH 会话里执行检索直接 traceback、退出码 1；根因：`open_db()` 里的 `PRAGMA journal_mode=WAL` 要写 `D:\data`，DSH 沙箱只放行 workspace，SQLite 只读打开同样需要目录写权限；修法：检索一律用 `file:...?mode=ro&immutable=1` 只读 URI，WAL 只在 `--rebuild` 时设置 → 依据：Tools/kb/kb_search.py（2026-11-08 实测：默认连接 FAIL、`mode=ro` FAIL、`immutable=1` OK）→ 边界：任何在 DSH 沙箱内跑、库或所在目录不可写的脚本
 6. **kb_search 的索引根默认只有 `D:/data`，其他盘符/目录的项目查不到** → 现象：`kb_search 水母缸` 返回 0 条、`HARO` 只 1 条，但文件确实存在；根因：`roots = args.root or ["D:/data"]` 写死单一根，而 haluo 在 `D:\My_project`，bus_servo / 水母缸 / can-debug / MechDog 在 DSH 工作目录；修法：改为 `DEFAULT_ROOTS = ["D:/data", "D:/My_project", Path.home()/"Documents/deepseek-harness/default-workspace"]`，`--root` 仍可覆盖 → 依据：Tools/kb/kb_search.py（2026-11-15 实测：173 → 203 个文件，水母缸 0→1、舵机 协议 0→6、HARO 1→3）→ 边界：新建在别的盘符/目录的项目仍要 `--root` 追加或改 DEFAULT_ROOTS；项目根目录散放的 md（如水母缸\设计说明_v01.md）不会被收录，需放进该项目 `Docs/`
+
+7. **「当前状态」必须独立于流水账，且整块置顶** → 现象：v143 已归零的 6 项遗留仍在被引用，且实际版本已到 v149；根因：project_memory 只追加、kb_brief 每节只摘最旧 2 条、kb_search 每文件只出 1 条片段 → 修法：每项目加 `## 0. 当前状态`（覆盖式 6 行）+ kb_brief 整块置顶并校验版本落后 + kb_search `--status` 与命中先贴状态 + project_index 三根 → 依据：Docs/2026-11-15-问题状态实时归纳方案.md（2026-11-15 实测：11 份摘要、跨项目索引 5→10 个项目、lag 单元测试 exit 1）→ 边界：状态块需人工覆盖维护；未加状态块的项目仍会退化为流水账
 
 ## 四、待整理 / 待验证
 

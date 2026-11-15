@@ -24,6 +24,12 @@ NL = chr(10)
 KB = Path(__file__).resolve().parents[2]
 CHIP_RE = re.compile("STM32[A-Za-z0-9]+|GD32[A-Za-z0-9]+|ESP32-[A-Za-z0-9]+|STC8[A-Za-z0-9]+|nRF[0-9A-Za-z]+")
 SKIP_DIRS = ("node_modules", ".git", "build", "__pycache__", ".venv", "dist")
+# 默认扫描根：与 kb_search / kb_brief 保持一致（2026-11-15 三根归一）
+DEFAULT_ROOTS = [
+    "D:/data",
+    "D:/My_project",
+    str(Path.home() / "Documents" / "deepseek-harness" / "default-workspace"),
+]
 
 
 def read(p):
@@ -105,7 +111,9 @@ def collect(root, max_depth=8):
         if p.parent.resolve() == KB.resolve():
             continue
         try:
-            found.append(parse(p))
+            d = parse(p)
+            d["abspath"] = str(p.resolve())
+            found.append(d)
         except Exception as exc:
             print("[idx] 跳过 %s: %s" % (p, exc))
     return sorted(found, key=lambda d: d["name"])
@@ -140,13 +148,25 @@ def build(items):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="D:/data")
+    ap.add_argument("--root", default=None, help="可多次给出；缺省扫 DEFAULT_ROOTS 三根")
     ap.add_argument("--out", default="Docs/跨项目索引.md")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    items = collect(args.root)
+    roots = [args.root] if args.root else DEFAULT_ROOTS
+    items, seen_abs = [], set()
+    for r in roots:
+        if not Path(r).is_dir():
+            print("[idx] 跳过不存在的根 %s" % r)
+            continue
+        for d in collect(r):
+            key = d.get("abspath")
+            if key in seen_abs:
+                continue
+            seen_abs.add(key)
+            items.append(d)
+    items.sort(key=lambda d: d["name"])
     out_path = Path(args.out)
     if not out_path.is_absolute():
         out_path = KB / out_path

@@ -53,6 +53,30 @@ def seg(text):
     return " ".join(out)
 
 
+def state_block(path):
+    """取 project_memory.md 顶部「## 0. 当前状态」块；没有则返回空串。"""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    lines = text.splitlines()
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.startswith("## "):
+            name = ln[3:].strip()
+            if name.replace(" ", "").startswith("0.") or name.startswith("当前状态"):
+                start = i
+                break
+    if start is None:
+        return ""
+    out = [lines[start]]
+    for ln in lines[start + 1:]:
+        if ln.startswith("## "):
+            break
+        out.append(ln)
+    return NL.join(out).strip()
+
+
 def read(p):
     raw = p.read_bytes()
     for enc in ("utf-8", "gb18030"):
@@ -172,6 +196,7 @@ def main():
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--root", action="append", default=None)
     ap.add_argument("--limit", type=int, default=12)
+    ap.add_argument("--status", action="store_true", help="只输出各项目的当前状态块")
     args = ap.parse_args()
 
     roots = args.root or DEFAULT_ROOTS
@@ -185,6 +210,26 @@ def main():
     if not DB.is_file():
         print("[search] 还没有索引，先跑 --rebuild")
         return 2
+    if args.status:
+        seen, printed = set(), 0
+        for r in (args.root or DEFAULT_ROOTS):
+            base = Path(r)
+            if not base.is_dir():
+                continue
+            for mem in base.rglob("project_memory.md"):
+                if any(part in SKIP_DIRS for part in mem.parts):
+                    continue
+                key = str(mem.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                blk = state_block(mem)
+                if not blk:
+                    continue
+                print(NL + blk)
+                printed += 1
+        print(NL + "[search] 输出 %d 个项目的当前状态" % printed)
+        return 0
     if args.stats or not args.terms:
         con = open_db(readonly=True)
         n, t = con.execute("SELECT COUNT(*), SUM(LENGTH(seg)) FROM docs").fetchone()
@@ -193,6 +238,15 @@ def main():
 
     rows = search(args.terms, args.limit)
     print("[search] %s → %d 条" % (" ".join(args.terms), len(rows)))
+    shown = set()
+    for path, project, title, kind, snip in rows:
+        mem = str(Path(path).with_name("project_memory.md"))
+        if mem not in shown:
+            shown.add(mem)
+            blk = state_block(mem)
+            if blk:
+                print(NL + "【当前状态 · %s】" % project)
+                print(blk)
     for path, project, title, kind, snip in rows:
         print(NL + "- [%s] %s  (%s)" % (kind, title, project))
         print("  %s" % path)
