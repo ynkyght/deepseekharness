@@ -3,7 +3,7 @@
 """kb_search - SQLite FTS5 全文检索：只做索引层，源文件仍是 Markdown。
 
 用法:
-    py -3.13 Tools/kb/kb_search.py --rebuild      # 重建索引（扫 D:/data）
+    py -3.13 Tools/kb/kb_search.py --rebuild      # 重建索引（默认扫 DEFAULT_ROOTS）
     py -3.13 Tools/kb/kb_search.py DM9000 地址     # 搜索（多个词按 AND）
     py -3.13 Tools/kb/kb_search.py --stats        # 看索引规模
 """
@@ -23,6 +23,12 @@ except Exception:
 KB = Path(__file__).resolve().parents[2]
 DB = KB / "Tools" / "kb" / "kb.db"
 SKIP_DIRS = ("node_modules", ".git", "build", "__pycache__", ".venv", "dist", "MDK-ARM", "Objects")
+# 默认索引根：知识库自身 + 机械项目 + DSH 会话工作目录（各项目 Docs/ 与 project_memory.md）
+DEFAULT_ROOTS = [
+    "D:/data",
+    "D:/My_project",
+    str(Path.home() / "Documents" / "deepseek-harness" / "default-workspace"),
+]
 
 
 def is_cjk(ch):
@@ -168,7 +174,7 @@ def main():
     ap.add_argument("--limit", type=int, default=12)
     args = ap.parse_args()
 
-    roots = args.root or ["D:/data"]
+    roots = args.root or DEFAULT_ROOTS
     if args.rebuild:
         try:
             return rebuild(roots)

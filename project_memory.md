@@ -3,7 +3,7 @@
 > 用途：每次开会话先读这一页，知道库里有什么、怎么找。
 > 规则：只收可验证的知识；每条带来源；不确定标「待验证」。
 
-最后更新：2026-11-08
+最后更新：2026-11-15
 
 ---
 
@@ -14,6 +14,8 @@
 - 原始资料：`inbox/`（只读）
 - 整理稿：`Docs/YYYY-MM-DD-主题.md`
 - 索引：`Docs/INDEX.md`（脚本生成）
+- 检索索引（SQLite FTS5）：`Tools/kb/kb.db`，默认扫三个根：`D:/data`、`D:/My_project`、DSH 工作目录 `~/Documents/deepseek-harness/default-workspace`
+- 收录规则：只收各项目 `Docs/`（`docs/`）目录下的 `*.md` 与 `project_memory.md`；项目根目录散放的 md 不进索引
 - 本文件：结论总表
 
 ## 二、已收录主题
@@ -31,6 +33,7 @@
 3. **DMA 缓冲区不要放 CCM/TCM** → 依据：F407 project_memory 坑 #2 → 边界：F4/F7/H7 带 DMA 的外设
 4. **外置 RAM 段必须 UNINIT + zero_init** → 依据：V7 project_memory 坑 #7 → 边界：SDRAM/外部 SRAM 被 C 启动代码清零时
 5. **沙箱内跑 kb_search.py 报 `unable to open database file`** → 现象：DSH 会话里执行检索直接 traceback、退出码 1；根因：`open_db()` 里的 `PRAGMA journal_mode=WAL` 要写 `D:\data`，DSH 沙箱只放行 workspace，SQLite 只读打开同样需要目录写权限；修法：检索一律用 `file:...?mode=ro&immutable=1` 只读 URI，WAL 只在 `--rebuild` 时设置 → 依据：Tools/kb/kb_search.py（2026-11-08 实测：默认连接 FAIL、`mode=ro` FAIL、`immutable=1` OK）→ 边界：任何在 DSH 沙箱内跑、库或所在目录不可写的脚本
+6. **kb_search 的索引根默认只有 `D:/data`，其他盘符/目录的项目查不到** → 现象：`kb_search 水母缸` 返回 0 条、`HARO` 只 1 条，但文件确实存在；根因：`roots = args.root or ["D:/data"]` 写死单一根，而 haluo 在 `D:\My_project`，bus_servo / 水母缸 / can-debug / MechDog 在 DSH 工作目录；修法：改为 `DEFAULT_ROOTS = ["D:/data", "D:/My_project", Path.home()/"Documents/deepseek-harness/default-workspace"]`，`--root` 仍可覆盖 → 依据：Tools/kb/kb_search.py（2026-11-15 实测：173 → 203 个文件，水母缸 0→1、舵机 协议 0→6、HARO 1→3）→ 边界：新建在别的盘符/目录的项目仍要 `--root` 追加或改 DEFAULT_ROOTS；项目根目录散放的 md（如水母缸\设计说明_v01.md）不会被收录，需放进该项目 `Docs/`
 
 ## 四、待整理 / 待验证
 
