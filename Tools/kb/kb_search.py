@@ -177,14 +177,14 @@ def rebuild(roots):
 
 def search(terms, limit=12):
     con = open_db(readonly=True)
-    phrase = '"' + " ".join(seg(t) for t in terms) + '"'
+    phrase = '"' + " ".join(seg(t).replace("-", " ") for t in terms) + '"'
     sql = """SELECT d.path, d.project, d.title, d.kind,
                     snippet(docs_fts, 0, '[', ']', ' … ', 14) AS snip
              FROM docs_fts f JOIN docs d ON d.id = f.rowid
              WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?"""
     rows = con.execute(sql, (phrase, limit)).fetchall()
     if not rows:
-        loose = " AND ".join(seg(t) for t in terms)
+        loose = " AND ".join(seg(t).replace("-", " ") for t in terms)
         rows = con.execute(sql, (loose, limit)).fetchall()
     return rows
 
